@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="data-extraction-flow" doc:id="bf490f4d-7a8a-4c98-8692-c896aa84eae2" >
+		<http:listener doc:name="POST /data/extract" doc:id="1fe5b4e4-4335-4af4-9562-6241b26f9822" config-ref="http-listener-config" path="/data/extract" allowedMethods="POST"/>
+		<ee:transform doc:name="Set report" doc:id="c654dcd6-f27b-43c2-9195-87aa48b1d534" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="report" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"Start time": now() >> "Australia/Sydney",
+	"Completed time": null,
+	"Migration work": payload.information.migrationWork,
+	"Entity being migrated":  payload.information.entity,
+	"Process": "Data extraction",
+	"Step": "Start"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<set-variable value="#[payload.properties default {}]" doc:name="Set properties" doc:id="9f5b75f7-75ab-4b59-91aa-ab901ce8aed6" variableName="properties" />
+		<logger level="INFO" doc:name="Log Info Report" doc:id="e71c6a3d-47a8-438a-8039-ef8855e6b3b1" message='#[vars.report as Object default {}]' />
+		<ee:transform doc:name="Update report" doc:id="aea54f10-ab98-434d-b739-f567bc205ce6">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="report"><![CDATA[%dw 2.0
+output application/java
+---
+(payload update {
+	case .Step -> "Retrieve data"
+}) ++ {
+	"Number of records retrieved": sizeOf(payload) default 0
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Log Info Report" doc:id="473e1dde-6c65-4c39-b8f4-7be44943b693" message="#[vars.report as Object default {}]" />
+		<ee:transform doc:name="Transform Data to Specified Format" doc:id="ec244a4e-9467-4246-a260-63681b30ae3f" >
+			<ee:message >
+				<ee:set-payload resource="dataweave/data-extract-transformation.dwl" />
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Update report" doc:id="122212d7-a1a3-4d54-971b-3ab5aa08e407">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="report"><![CDATA[%dw 2.0
+output application/java
+---
+(payload update {
+	case .Step -> "End"
+})  ++ {
+	"Number of records processed": sizeOf(payload) default 0
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<file:write doc:name="Write File" doc:id="77f51d9b-8aa1-4391-81ec-31a173a09583" path='#[(vars.properties.file.destination default "/") ++ (vars.properties.file.fileName default "data_extract.csv")]'/>
+		<logger level="INFO" doc:name="Log Info Report" doc:id="83b741ea-313f-41fa-b053-22bd7385be1e" message="#[vars.report as Object default {}]" />
+	</flow>
+</mule>

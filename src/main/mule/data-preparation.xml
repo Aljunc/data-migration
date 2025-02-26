@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="retrieve-main-info-subflow" doc:id="c6fc7b07-3adf-4477-b798-06fcd9642183">
+		<logger level="INFO" doc:name="Logger" doc:id="03fd0bef-fc28-4812-970e-33de9a3ae393" />
+	</sub-flow>
+	<sub-flow name="retrieve-additional-info-subflow" doc:id="0c86b88c-9601-4031-b09a-4d0dd624b213">
+		<logger level="INFO" doc:name="Logger" doc:id="c3cbc55d-69e7-465e-b157-4d0e33979693" />
+	</sub-flow>
+	<flow name="data-transformation-flow" doc:id="4f6ead75-0aa2-4440-8e39-875a280fbb24" >
+		<http:listener doc:name="POST /data/transform" doc:id="a8664f45-43b7-4534-9197-968b42cb3089" config-ref="http-listener-config" path="/data/transform" allowedMethods="POST" />
+		<ee:transform doc:name="Set report" doc:id="6eb5beae-386d-4529-8958-6fe377db0224">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="report"><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"Start time": now() >> "Australia/Sydney",
+	"Completed time": null,
+	"Migration work": payload.information.migrationWork,
+	"Entity being migrated":  payload.information.entity,
+	"Process": "Data transformation",
+	"Step": "Start"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<set-variable value="#[payload default {}]" doc:name="Set properties" doc:id="e8d7c24b-da16-4480-8ea1-040fd56c89b4" variableName="properties" />
+		<logger level="INFO" doc:name="Log Info Report" doc:id="244b0fc6-f6de-4e81-a724-cfa26f6cf1ab" message="#[vars.report as Object default {}]" />
+		<flow-ref doc:name="retrieve-main-info-subflow" doc:id="7ed81499-6adb-4138-8c00-608d58fcd3d3" name="retrieve-main-info-subflow"/>
+		<flow-ref doc:name="retrieve-additional-info-subflow" doc:id="0c56e0e9-e96f-4791-ac7b-63aa1217e2d5" name="retrieve-additional-info-subflow"/>
+		<ee:transform doc:name="Update report" doc:id="b304cd44-8dd5-40c8-ad44-9e9e964a0bec">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="report"><![CDATA[%dw 2.0
+output application/java
+---
+(payload update {
+	case .Step ->  "Data Transformation"
+}) ++ {
+	"Main data retrieved": "Yes",
+	"Secondary data retrieved": "Yes",
+	"Number of data retrieved": sizeOf(payload) default 0
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Log Info Report" doc:id="a17b5072-df64-47a3-873e-b45b88f53aef" message="#[vars.report as Object default {}]" />
+		<ee:transform doc:name="Transform Data to Target System Standards" doc:id="34669a88-50e8-4a2b-809b-666b2e204427" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Update report" doc:id="ce0c6d8d-96d8-4c99-898c-b70cf7f05408">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="report"><![CDATA[%dw 2.0
+output application/java
+---
+(payload update {
+	case .Step ->  "End"
+})++ {
+	"Number of data processed": sizeOf(payload) default 0
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<file:write doc:name="Write File" doc:id="5ad7ddc5-ffb1-417f-a2da-9e6d68285afc" path='#[(vars.properties.file.destination default "/") ++ (vars.properties.file.fileName default "data_transformation.csv")]'/>
+		<logger level="INFO" doc:name="Log Info Report" doc:id="b0d325aa-6e5d-44f6-bc41-bafe7889a9d0" message="#[vars.report as Object default {}]" />
+	</flow>
+</mule>

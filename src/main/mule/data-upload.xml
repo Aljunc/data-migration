@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="data-ingestion-flow" doc:id="dbade436-725a-4077-87f1-9147a6ddc36f" >
+		<http:listener doc:name="POST /data/upload" doc:id="58fb1b3a-771d-4246-bcc6-d842c6a5c6ff" config-ref="http-listener-config" path="/data/upload" allowedMethods="POST" />
+		<ee:transform doc:name="Set report" doc:id="9ba35634-a962-406f-8b35-df29ae6401a0">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="report"><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"Start time": now() >> "Australia/Sydney",
+	"Completed time": null,
+	"Migration work": payload.information.migrationWork,
+	"Entity being migrated":  payload.information.entity,
+	"Process": "Data ingestion",
+	"Step": "Start"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<set-variable value="#[payload default {}]" doc:name="Set properties" doc:id="1c03b406-1578-407c-9dfc-7f14720e0516" variableName="properties" />
+		<logger level="INFO" doc:name="Log Info Report" doc:id="f3b9eff1-f4a9-4e91-bcdb-c05a864f4aa5" message="#[vars.report as Object default {}]" />
+		<file:read doc:name="Read File" doc:id="2002f193-5a1f-4ef9-8e21-b9320f4c5c92" path="#[vars.properties.file.source ++ vars.properties.file.fileName]"/>
+		<ee:transform doc:name="Update report" doc:id="8572e9fd-0140-43e6-b987-1eb60cbc1003">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="report"><![CDATA[%dw 2.0
+output application/java
+---
+(payload update {
+	case .Step ->  "Data Upload"
+}) ++ {
+	"Main data retrieved": "Yes",
+	"Number of data retrieved": sizeOf(payload) default 0
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Log Info Report" doc:id="73aac709-8f62-482c-9744-c31ef40fc25d" message="#[vars.report as Object default {}]" />
+	</flow>
+</mule>
